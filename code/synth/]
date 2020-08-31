@@ -1,0 +1,92 @@
+open MyStdLib
+open Lang
+
+type t =
+  | Disjunct of conjunct list
+
+and conjunct =
+  | Conjunct of atom list
+
+and atom =
+  | PrepareFix of t * Id.t
+  | Sealed of Grammar.t
+  | RecursiveSeal of Id.t * Grammar.t
+[@@deriving eq, hash, ord, show]
+
+let times
+    (s1:t)
+    (s2:t)
+  : t =
+  let concat_conjunct
+      (c1:conjunct)
+      (c2:conjunct)
+    : conjunct =
+    let Conjunct c1as = c1 in
+    let Conjunct c2as = c2 in
+    Conjunct (c1as@c2as)
+  in
+  let Disjunct s1cs = s1 in
+  let Disjunct s2cs = s2 in
+  Disjunct
+    (cartesian_map
+       ~f:concat_conjunct
+       s1cs
+       s2cs)
+
+let plus
+    (s1:t)
+    (s2:t)
+  : t =
+  let Disjunct s1cs = s1 in
+  let Disjunct s2cs = s2 in
+  Disjunct (s1cs@s2cs)
+
+let atom_to_skeleton
+    (a:atom)
+  : t =
+  Disjunct [Conjunct [a]]
+
+let multiplicative_identity = Disjunct [Conjunct []]
+
+let additive_identity = Disjunct []
+
+let fix
+    (i:Id.t)
+    (s:t)
+  : t =
+  atom_to_skeleton (PrepareFix (s,i))
+
+let seal
+    (g:Grammar.t)
+  : t =
+  atom_to_skeleton (Sealed g)
+
+let from_grammar
+    (g:Grammar.t)
+  : t =
+  let rec from_production_internal
+      (p:Grammar.Production.t)
+      (processed:Id.t list)
+    : t =
+    begin match p with
+      | Nonterminal i ->
+        if List.mem ~equal:Id.equal processed i then
+          atom_to_skeleton (Sealed g)
+        else
+          fix (from_production_internal p (i::processed))
+      | Terminal t -> multiplicative_identity
+      | Concat (p1,p2) ->
+        let s1 = from_production_internal p1 processed in
+        let s2 = from_production_internal p2 processed in
+        times s1 s2
+      | Or (p1,p2) ->
+        let s1 = from_production_internal p1 processed in
+        let s2 = from_production_internal p2 processed in
+        plus s1 s2
+      | Empty -> additive_identity
+    end
+  in
+  from_production_internal
+    (Grammar.get_initial_production g)
+    []
+

@@ -1,0 +1,5 @@
+(library
+    (name myStdLib)
+    (public_name myStdLib)
+    (preprocess (pps ppx_hash ppx_deriving.std))
+    (libraries core str core_extended posix-math oUnit))

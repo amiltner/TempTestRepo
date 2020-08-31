@@ -1,0 +1,68 @@
+open MyStdLib
+
+module EvalContext = struct
+end
+
+let parse_tree_apply
+    (pt:ParseTree.t)
+    (c:Converter.t)
+  : ParseTree.t =
+  let rec apply
+      (ctx:(Id.t * ParseTree.t) list)
+      (c:Converter.t)
+    : ParseTree.t =
+    begin match c with
+      | EmptyFunc -> failwith "shouldn't happen"
+      | StringIntro s -> ParseTree.mk_terminal s
+      | OrElim (i_old,i_new,c1,c2) ->
+        if not (List.Assoc.mem ~equal:Id.equal ctx i_old) then failwith (Id.show i_old);
+        let p = List.Assoc.find_exn ~equal:Id.equal ctx i_old in
+        let (b,p) = ParseTree.destruct_or_exn p in
+        let ctx = (i_new,p)::ctx in
+        if b then
+          apply
+            ctx
+            c1
+        else
+          apply
+            ctx
+            c2
+      | ConcatElim (i_old,i1,i2,c) ->
+        let p = List.Assoc.find_exn ~equal:Id.equal ctx i_old in
+        let (p1,p2) = ParseTree.destruct_concat_exn p in
+        let ctx = (i1,p1)::(i2,p2)::ctx in
+        apply
+          ctx
+          c
+      | OrIntro (b,c) ->
+        ParseTree.mk_or
+          b
+          (apply
+             ctx
+             c)
+      | ConcatIntro (c1,c2) ->
+        ParseTree.mk_concat
+          (apply ctx c1)
+          (apply ctx c2)
+      | Variable v -> List.Assoc.find_exn ~equal:Id.equal ctx v
+      | Apply (v1,v2) -> failwith "ah"
+    end
+  in
+  apply
+    [(Id.from_int 0,pt)]
+    c
+
+let apply
+    (g:Grammar.t)
+    (s:string)
+    (c:Converter.t)
+  : string =
+  let a = Automata.from_grammar g in
+  let bs = Option.value_exn (Automata.parse a s) in
+  let pt = ParseTree.from_bool_list g bs in
+  let pt =
+    parse_tree_apply
+      pt
+      c
+  in
+  ParseTree.to_string pt
